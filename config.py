@@ -15,10 +15,11 @@ YESTERDAY_START = (NOW_BJT - timedelta(days=1)).replace(hour=0, minute=0, second
 YESTERDAY_END = YESTERDAY_START.replace(hour=23, minute=59, second=59)
 
 # ============================================================
-# Claude API
+# LLM API (OpenAI 兼容格式)
 # ============================================================
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://eoeo.xyz/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o")
 MAX_TOKENS = 8192
 
 # ============================================================

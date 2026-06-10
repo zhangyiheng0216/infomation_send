@@ -1,6 +1,6 @@
 """
 AI Daily Digest - Content Curator
-Uses Claude API to filter, categorize, and summarize AI news.
+Uses LLM API (OpenAI-compatible) to filter, categorize, and summarize AI news.
 """
 
 import json
@@ -8,10 +8,10 @@ import logging
 from collections import defaultdict
 from typing import Any, Dict, List
 
-import anthropic
+from openai import OpenAI
 
 from collectors import RawItem
-from config import ANTHROPIC_API_KEY, CATEGORIES, CLAUDE_MODEL, MAX_TOKENS
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, CATEGORIES, MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ Respond with valid JSON in this exact structure:
 ```json
 {
   "categories": {
-    "📄 研究论文": [
+    "📄 研究论文 (Research Papers)": [
       {
         "title": "Original English Title",
         "url": "https://...",
@@ -40,7 +40,7 @@ Respond with valid JSON in this exact structure:
         "score": 42
       }
     ],
-    "🚀 产品发布": [],
+    "🚀 产品发布 (Product Launches)": [],
     ...
   },
   "stats": {
@@ -53,13 +53,13 @@ Respond with valid JSON in this exact structure:
 
 ## Categories
 
-- 📄 研究论文: Academic papers, technical reports, preprints (arXiv, papers with code)
-- 🚀 产品发布: New model releases, product updates, API launches, demos
-- 🏢 行业动态: Funding rounds, acquisitions, partnerships, policy changes
-- 💻 开源项目: GitHub repos, open-source tools, model weights, frameworks
-- 🛠️ 工具与框架: Developer tools, libraries, platforms, infrastructure
-- 📊 数据集与基准: New datasets, benchmark results, leaderboards, evaluations
-- 🧠 观点与讨论: Opinion pieces, interviews, debates, trend analysis
+- 📄 研究论文 (Research Papers): Academic papers, technical reports, preprints (arXiv, papers with code)
+- 🚀 产品发布 (Product Launches): New model releases, product updates, API launches, demos
+- 🏢 行业动态 (Industry News): Funding rounds, acquisitions, partnerships, policy changes
+- 💻 开源项目 (Open Source): GitHub repos, open-source tools, model weights, frameworks
+- 🛠️ 工具与框架 (Tools & Frameworks): Developer tools, libraries, platforms, infrastructure
+- 📊 数据集与基准 (Datasets & Benchmarks): New datasets, benchmark results, leaderboards, evaluations
+- 🧠 观点与讨论 (Opinions & Discussions): Opinion pieces, interviews, debates, trend analysis
 
 ## Filtering Rules
 
@@ -96,7 +96,8 @@ Examples:
 - If an item could fit multiple categories, pick the most specific one
 - Preserve the original English title exactly as provided
 - For items with high scores (>100), they are likely significant — give them more detailed summaries
-- If you're unsure about relevance, err on the side of exclusion"""
+- If you're unsure about relevance, err on the side of exclusion
+- IMPORTANT: Respond ONLY with the JSON object, no other text before or after"""
 
 
 def format_items_for_prompt(items: List[RawItem]) -> str:
@@ -112,7 +113,6 @@ def format_items_for_prompt(items: List[RawItem]) -> str:
         line += f"URL: {item.url}"
 
         if item.description:
-            # Truncate long descriptions
             desc = item.description[:200].replace("\n", " ")
             line += f" | Desc: {desc}"
 
@@ -123,10 +123,10 @@ def format_items_for_prompt(items: List[RawItem]) -> str:
 
 def curate(items: List[RawItem]) -> Dict[str, Any]:
     """
-    Use Claude to filter, categorize, and summarize items.
+    Use LLM to filter, categorize, and summarize items.
 
     Returns: {
-        "categories": {"📄 研究论文": [...], ...},
+        "categories": {"📄 研究论文 (Research Papers)": [...], ...},
         "stats": {"total_processed": N, "total_kept": M, ...}
     }
     """
@@ -134,11 +134,11 @@ def curate(items: List[RawItem]) -> Dict[str, Any]:
         logger.warning("No items to curate")
         return {"categories": {cat: [] for cat in CATEGORIES}, "stats": {}}
 
-    if not ANTHROPIC_API_KEY:
-        logger.error("ANTHROPIC_API_KEY not set, falling back to basic grouping")
+    if not LLM_API_KEY:
+        logger.error("LLM_API_KEY not set, falling back to basic grouping")
         return fallback_curation(items)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
     items_text = format_items_for_prompt(items)
     user_prompt = f"""Please curate the following {len(items)} AI news items collected from yesterday.
@@ -149,22 +149,24 @@ Categorize each kept item and write a Chinese summary.
 Items:
 {items_text}"""
 
-    logger.info(f"Calling Claude API with {len(items)} items (~{len(items_text)} chars)")
+    logger.info(f"Calling LLM API with {len(items)} items (~{len(items_text)} chars)")
+    logger.info(f"Using model: {LLM_MODEL}, base_url: {LLM_BASE_URL}")
 
     try:
-        response = client.messages.create(
-            model=CLAUDE_MODEL,
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
         )
 
-        response_text = response.content[0].text.strip()
-        logger.info(f"Claude API response: {len(response_text)} chars")
+        response_text = response.choices[0].message.content.strip()
+        logger.info(f"LLM API response: {len(response_text)} chars")
 
         # Extract JSON from response (handle markdown code fences)
         if response_text.startswith("```"):
-            # Find the JSON content between code fences
             lines = response_text.split("\n")
             json_lines = []
             in_json = False
@@ -181,11 +183,9 @@ Items:
 
         result = json.loads(response_text)
 
-        # Validate structure
         if "categories" not in result:
             raise ValueError("Response missing 'categories' key")
 
-        # Ensure all categories exist
         for cat in CATEGORIES:
             if cat not in result["categories"]:
                 result["categories"][cat] = []
@@ -198,42 +198,40 @@ Items:
         return result
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse Claude response as JSON: {e}")
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
         logger.debug(f"Raw response: {response_text[:500]}")
         return fallback_curation(items)
     except Exception as e:
-        logger.error(f"Claude API call failed: {e}", exc_info=True)
+        logger.error(f"LLM API call failed: {e}", exc_info=True)
         return fallback_curation(items)
 
 
 def fallback_curation(items: List[RawItem]) -> Dict[str, Any]:
     """
-    Basic curation without Claude — just group by source.
-    Used when Claude API is unavailable.
+    Basic curation without LLM — just group by source.
+    Used when LLM API is unavailable.
     """
     logger.info("Using fallback curation (basic grouping by source)")
 
     categories = {cat: [] for cat in CATEGORIES}
 
-    # Simple heuristic categorization
     for item in items:
         title_lower = item.title.lower()
 
-        # Heuristic categorization based on keywords
         if any(kw in title_lower for kw in ["paper", "arxiv", "study", "research"]):
-            cat = "📄 研究论文"
+            cat = "📄 研究论文 (Research Papers)"
         elif any(kw in title_lower for kw in ["launch", "release", "announce", "introduce", "new"]):
-            cat = "🚀 产品发布"
+            cat = "🚀 产品发布 (Product Launches)"
         elif any(kw in title_lower for kw in ["funding", "acquire", "invest", "partner"]):
-            cat = "🏢 行业动态"
+            cat = "🏢 行业动态 (Industry News)"
         elif any(kw in title_lower for kw in ["github", "open source", "open-source", "repo"]):
-            cat = "💻 开源项目"
+            cat = "💻 开源项目 (Open Source)"
         elif any(kw in title_lower for kw in ["tool", "framework", "library", "api", "platform"]):
-            cat = "🛠️ 工具与框架"
+            cat = "🛠️ 工具与框架 (Tools & Frameworks)"
         elif any(kw in title_lower for kw in ["dataset", "benchmark", "leaderboard", "evaluation"]):
-            cat = "📊 数据集与基准"
+            cat = "📊 数据集与基准 (Datasets & Benchmarks)"
         else:
-            cat = "🧠 观点与讨论"
+            cat = "🧠 观点与讨论 (Opinions & Discussions)"
 
         categories[cat].append({
             "title": item.title,
@@ -243,7 +241,6 @@ def fallback_curation(items: List[RawItem]) -> Dict[str, Any]:
             "score": item.score,
         })
 
-    # Sort each category by score
     for cat in categories:
         categories[cat].sort(key=lambda x: x["score"], reverse=True)
 
