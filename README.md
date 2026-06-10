@@ -15,8 +15,8 @@
 ### 1. Fork 或克隆本项目
 
 ```bash
-git clone https://github.com/your-username/ai-daily-digest.git
-cd ai-daily-digest
+git clone https://github.com/zhangyiheng0216/infomation_send.git
+cd infomation_send
 ```
 
 ### 2. 配置 GitHub Secrets
