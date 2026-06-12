@@ -8,7 +8,7 @@ on:
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -23,6 +23,60 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Check environment & API connectivity
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: |
+          echo "=== Environment Check ==="
+          echo "Python: $(python --version)"
+          echo "LLM_API_KEY: ${LLM_API_KEY:+set (len=${#LLM_API_KEY})}"
+          echo "LLM_API_KEY: ${LLM_API_KEY:-NOT SET}"
+          echo "LLM_BASE_URL: ${LLM_BASE_URL:-https://eoeo.xyz/v1}"
+          echo "LLM_MODEL: ${LLM_MODEL:-google/gemini-2.0-flash-exp:free}"
+          echo "SMTP_USER: ${SMTP_USER:+set}"
+          echo "EMAIL_TO: ${EMAIL_TO:+set}"
+          echo ""
+          echo "=== API Connectivity Test ==="
+          BASE_URL="${LLM_BASE_URL:-https://eoeo.xyz/v1}"
+          # Test basic connectivity
+          curl -s -o /dev/null -w "GET /models HTTP %{http_code} (connect: %{time_connect}s, total: %{time_total}s)\n" \
+            -H "Authorization: Bearer ${LLM_API_KEY}" \
+            --max-time 15 \
+            "${BASE_URL}/models" || echo "Connection failed"
+          # Test model listing
+          echo ""
+          echo "=== Available Models ==="
+          curl -s -H "Authorization: Bearer ${LLM_API_KEY}" \
+            --max-time 15 \
+            "${BASE_URL}/models" | python -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              models = data.get('data', [])
+              print(f'Total models: {len(models)}')
+              target = '${LLM_MODEL:-google/gemini-2.0-flash-exp:free}'
+              found = False
+              for m in models:
+                  mid = m.get('id', '')
+                  if mid == target:
+                      print(f'Target model FOUND: {mid}')
+                      found = True
+              if not found:
+                  print(f'Target model NOT FOUND: {target}')
+                  # Show similar models
+                  similar = [m.get('id','') for m in models if any(kw in m.get('id','').lower() for kw in target.lower().split('/'))]
+                  if similar:
+                      print(f'Similar models: {similar[:15]}')
+                  else:
+                      # Show first 20 models
+                      print(f'First 20 models: {[m.get(\"id\",\"\") for m in models[:20]]}')
+          except Exception as e:
+              print(f'Failed to parse models response: {e}')
+              print(f'Raw: {sys.stdin.read()[:500]}')
+          " || echo "Model listing failed"
 
       - name: Run digest
         env:

@@ -19,8 +19,8 @@ YESTERDAY_END = YESTERDAY_START.replace(hour=23, minute=59, second=59)
 # ============================================================
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://eoeo.xyz/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "google/gemini-2.0-flash-exp:free")
-MAX_TOKENS = 4096
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-4-6")
+MAX_TOKENS = 8192
 
 # ============================================================
 # QQ Mail SMTP
