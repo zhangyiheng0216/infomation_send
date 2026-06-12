@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .env
-*.html.digest.html
+digest-*.html
 .venv/
 venv/
+.claude/
+.idea/

@@ -33,7 +33,6 @@ jobs:
           echo "=== Environment Check ==="
           echo "Python: $(python --version)"
           echo "LLM_API_KEY: ${LLM_API_KEY:+set (len=${#LLM_API_KEY})}"
-          echo "LLM_API_KEY: ${LLM_API_KEY:-NOT SET}"
           echo "LLM_BASE_URL: ${LLM_BASE_URL:-https://eoeo.xyz/v1}"
           echo "LLM_MODEL: ${LLM_MODEL:-google/gemini-2.0-flash-exp:free}"
           echo "SMTP_USER: ${SMTP_USER:+set}"
